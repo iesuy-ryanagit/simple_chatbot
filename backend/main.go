@@ -45,6 +45,17 @@ var (
 )
 
 func chatHandler(w http.ResponseWriter, r *http.Request) {
+
+
+    w.Header().Set("Access-Control-Allow-Origin", "*") // 本番ではフロントのURLに置き換える
+    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+    w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+    // プリフライト OPTIONS リクエストには 200 を返す
+    if r.Method == http.MethodOptions {
+        w.WriteHeader(http.StatusOK)
+        return
+    }
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
