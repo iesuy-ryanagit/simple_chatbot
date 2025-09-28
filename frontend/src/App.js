@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+const API_URL = process.env.REACT_APP_API_URL;
 
 function App() {
   const [input, setInput] = useState("");
@@ -14,7 +15,7 @@ function App() {
 
     try {
       // バックエンドAPIに送信
-      const res = await fetch("/api/chat", {
+      const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: input }),
