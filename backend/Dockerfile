@@ -3,17 +3,19 @@ FROM golang:1.20-alpine AS builder
 
 WORKDIR /app
 
-COPY go.mod  ./
-RUN go mod download
+COPY go.mod ./
+# 外部依存がないので go mod tidy しても問題なし
+RUN go mod tidy
 
 COPY . .
 
-RUN go build -o server main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go
 
 # run stage
 FROM alpine:latest
 
 WORKDIR /app
+RUN apk --no-cache add ca-certificates
 
 COPY --from=builder /app/server .
 
