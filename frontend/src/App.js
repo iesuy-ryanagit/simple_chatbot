@@ -12,6 +12,7 @@ function App() {
 
     const userMessage = { sender: "user", text: input };
     setMessages(prev => [...prev, userMessage]);
+    console.log(API_URL);
 
     try {
       // バックエンドAPIに送信
