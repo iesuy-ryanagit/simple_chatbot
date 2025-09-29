@@ -53,6 +53,8 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
     w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
+	log.Printf("ALLOW_ORIGIN=%q", ALLOW_ORIGIN)
+
     // プリフライト OPTIONS リクエストには 200 を返す
     if r.Method == http.MethodOptions {
         w.WriteHeader(http.StatusOK)
