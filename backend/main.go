@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 )
 
 type ChatRequest struct {
@@ -84,6 +85,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to marshal request", http.StatusInternalServerError)
 		return
 	}
+	log.Printf("HF Request: %s", string(jsonBody))
 
 	httpReq, err := http.NewRequest("POST", HF_API_URL, bytes.NewBuffer(jsonBody))
 	if err != nil {
@@ -94,7 +96,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 	httpReq.Header.Set("Authorization", "Bearer "+HF_API_TOKEN)
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		http.Error(w, "Failed to call Hugging Face API", http.StatusInternalServerError)
