@@ -1,5 +1,54 @@
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
+// コードブロック用コンポーネント
+function CodeBlock({ children }) {
+  const [copied, setCopied] = useState(false);
+  const code = String(children);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch (e) {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', margin: '8px 0' }}>
+      <pre style={{
+        background: '#222',
+        color: '#fff',
+        borderRadius: 8,
+        padding: '16px',
+        fontSize: 15,
+        overflowX: 'auto',
+        margin: 0
+      }}>
+        <code>{code}</code>
+      </pre>
+      <button
+        onClick={handleCopy}
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 12,
+          padding: '4px 10px',
+          fontSize: 13,
+          borderRadius: 6,
+          border: 'none',
+          background: copied ? '#4caf50' : '#0078fe',
+          color: '#fff',
+          cursor: 'pointer',
+          transition: 'background 0.2s',
+        }}
+      >
+        {copied ? 'コピーしました' : 'コピー'}
+      </button>
+    </div>
+  );
+}
 const API_URL = process.env.REACT_APP_API_URL;
 
 function App() {
@@ -70,7 +119,16 @@ function App() {
               }}
             >
               {msg.sender === "bot"
-                ? <ReactMarkdown>{msg.text}</ReactMarkdown>
+                ? <ReactMarkdown
+                    components={{
+                      code: ({node, inline, className, children, ...props}) => {
+                        if (inline) {
+                          return <code style={{ background: '#eee', borderRadius: 4, padding: '2px 4px' }}>{children}</code>;
+                        }
+                        return <CodeBlock>{children}</CodeBlock>;
+                      }
+                    }}
+                  >{msg.text}</ReactMarkdown>
                 : msg.text}
             </div>
           </div>
