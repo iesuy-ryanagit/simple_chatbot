@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import ReactMarkdown from "react-markdown";
 const API_URL = process.env.REACT_APP_API_URL;
 
 function App() {
@@ -68,7 +69,9 @@ function App() {
                 fontSize: 16,
               }}
             >
-              {msg.text}
+              {msg.sender === "bot"
+                ? <ReactMarkdown>{msg.text}</ReactMarkdown>
+                : msg.text}
             </div>
           </div>
         ))}
@@ -88,7 +91,6 @@ function App() {
             background: '#fff',
           }}
           placeholder="メッセージを入力..."
-          onKeyDown={e => { if (e.key === 'Enter' && !loading) sendMessage(); }}
           disabled={loading}
         />
         <button
