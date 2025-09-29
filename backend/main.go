@@ -42,12 +42,13 @@ var (
 	HF_API_TOKEN = os.Getenv("API_KEY")
 	HF_API_URL   = "https://router.huggingface.co/novita/v3/openai/chat/completions"
 	HF_MODEL     = "deepseek/deepseek-v3-0324"
+	ALLOW_ORIGIN = os.Getenv("FRONTEND_URL")
 )
 
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 
-    w.Header().Set("Access-Control-Allow-Origin", "*") // 本番ではフロントのURLに置き換える
+    w.Header().Set("Access-Control-Allow-Origin", ALLOW_ORIGIN) // 本番ではフロントのURLに置き換える
     w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
     w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
