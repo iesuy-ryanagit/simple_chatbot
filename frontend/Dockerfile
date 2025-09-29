@@ -8,6 +8,10 @@ RUN npm install
 
 COPY . .
 
+# ビルド時に環境変数を受け取る
+ARG REACT_APP_API_URL
+ENV REACT_APP_API_URL=$REACT_APP_API_URL
+
 RUN npm run build
 
 # production stage
