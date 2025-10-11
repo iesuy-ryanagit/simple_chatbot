@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -44,7 +45,35 @@ var (
 	HF_API_URL   = "https://router.huggingface.co/novita/v3/openai/chat/completions"
 	HF_MODEL     = "deepseek/deepseek-v3-0324"
 	ALLOW_ORIGIN = os.Getenv("FRONTEND_URL")
+	logstashHost = os.Getenv("LOGSTASH_HOST")
+	logstashPort = os.Getenv("LOGSTASH_PORT")
 )
+
+
+func sendLogToLogstash(message string, level string) {
+	logData := map[string]interface{}{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"message":   message,
+		"service":   "backend",
+		"level":     level,
+	}
+
+	jsonLog, err := json.Marshal(logData)
+	if err != nil {
+		log.Println("Failed to marshal log:", err)
+		return
+	}
+
+	conn, err := net.Dial("tcp", logstashHost+":"+logstashPort)
+	if err != nil {
+		log.Println("Failed to connect to Logstash:", err)
+		return
+	}
+	defer conn.Close()
+
+	conn.Write(jsonLog)
+	conn.Write([]byte("\n")) // Logstash expects newline-delimited messages
+}
 
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 
@@ -53,7 +82,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
     w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-	log.Printf("ALLOW_ORIGIN=%q", ALLOW_ORIGIN)
+	// log.Printf("ALLOW_ORIGIN=%q", ALLOW_ORIGIN)
 
     // プリフライト OPTIONS リクエストには 200 を返す
     if r.Method == http.MethodOptions {
@@ -87,11 +116,14 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to marshal request", http.StatusInternalServerError)
 		return
 	}
+
 	log.Printf("HF Request: %s", string(jsonBody))
+	sendLogToLogstash("HF Request: " + string(jsonBody), "info")
 
 	httpReq, err := http.NewRequest("POST", HF_API_URL, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		sendLogToLogstash("Failed to create request: "+err.Error(), "error")
 		return
 	}
 

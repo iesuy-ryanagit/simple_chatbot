@@ -1,18 +1,6 @@
-version: "3.8"
+version: "3.7"
 
 services:
-  # db:
-  #   image: postgres:15
-  #   restart: always
-  #   env_file:
-  #     - .env
-  #   ports:
-  #     - "5432:5432"
-  #   volumes:
-  #     - postgres-data:/var/lib/postgresql/data
-  #     - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-  #   networks:
-  #     - app-network
   backend:
     build: ./backend
     ports:
@@ -22,6 +10,7 @@ services:
       - .env
     networks:
       - app-network
+      - esnet
   frontend:
     build: 
       context: ./frontend
@@ -36,9 +25,51 @@ services:
       - .env
     networks:
       - app-network
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - esnet
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:7.10.1
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5000:5000"
+    depends_on:
+      - elasticsearch
+    networks:
+      - esnet
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.10.1
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - esnet
 
 networks:
   app-network:
+  esnet:
 
 volumes:
-  postgres-data:
+  esdata:
