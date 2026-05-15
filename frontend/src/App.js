@@ -49,6 +49,18 @@ function CodeBlock({ children }) {
     </div>
   );
 }
+
+function getSessionId() {
+  let sessionId = localStorage.getItem("session_id");
+
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem("session_id", sessionId);
+  }
+
+  return sessionId;
+}
+
 const API_URL = process.env.REACT_APP_API_URL;
 
 function App() {
@@ -57,29 +69,64 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const sendMessage = async () => {
+
     if (!input.trim() || loading) return;
+
+    const currentInput = input;
+
+    setInput("");
     setLoading(true);
 
-    const userMessage = { sender: "user", text: input };
+    const userMessage = {
+      sender: "user",
+      text: currentInput
+    };
+
     setMessages(prev => [...prev, userMessage]);
-    console.log(API_URL);
 
     try {
-      // バックエンドAPIに送信
+
+      const sessionId = getSessionId();
+
       const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input }),
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          session_id: sessionId,
+          message: currentInput,
+        }),
       });
+
+      if (!res.ok) {
+        throw new Error("API Error");
+      }
+
       const data = await res.json();
 
-      const botMessage = { sender: "bot", text: data.reply };
+      const botMessage = {
+        sender: "bot",
+        text: data.reply
+      };
+
       setMessages(prev => [...prev, botMessage]);
+
     } catch (e) {
-      setMessages(prev => [...prev, { sender: "bot", text: "エラーが発生しました" }]);
+
+      setMessages(prev => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "エラーが発生しました"
+        }
+      ]);
+
+    } finally {
+
+      setLoading(false);
+
     }
-    setInput("");
-    setLoading(false);
   };
 
   return (

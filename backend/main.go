@@ -1,17 +1,19 @@
 package main
 
 import (
-	"os"
 	"bytes"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 )
 
 type ChatRequest struct {
-	Message string `json:"message"`
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
 }
 
 type ChatResponse struct {
@@ -46,20 +48,23 @@ var (
 	ALLOW_ORIGIN = os.Getenv("FRONTEND_URL")
 )
 
+// 会話履歴保存
+var (
+	conversationStore = map[string][]HFChatMessage{}
+	storeMutex        sync.Mutex
+)
+
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 
+	w.Header().Set("Access-Control-Allow-Origin", ALLOW_ORIGIN)
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-    w.Header().Set("Access-Control-Allow-Origin", ALLOW_ORIGIN) // 本番ではフロントのURLに置き換える
-    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-    w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
-	log.Printf("ALLOW_ORIGIN=%q", ALLOW_ORIGIN)
-
-    // プリフライト OPTIONS リクエストには 200 を返す
-    if r.Method == http.MethodOptions {
-        w.WriteHeader(http.StatusOK)
-        return
-    }
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -71,73 +76,100 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// OpenAI形式のリクエスト構造に変換
+	if req.SessionID == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// =========================
+	// 🔥 完全ロックで履歴処理
+	// =========================
+	storeMutex.Lock()
+
+	history := conversationStore[req.SessionID]
+
+	// user追加
+	history = append(history, HFChatMessage{
+		Role:    "user",
+		Content: req.Message,
+	})
+
+	// 長さ制限（軽くする）
+	if len(history) > 10 {
+		history = history[len(history)-10:]
+	}
+
+	conversationStore[req.SessionID] = history
+
+	// =========================
+	// HF API
+	// =========================
 	hfReq := HFChatRequest{
-		Model: HF_MODEL,
-		Messages: []HFChatMessage{
-			{
-				Role:    "user",
-				Content: req.Message,
-			},
-		},
+		Model:    HF_MODEL,
+		Messages: history,
 	}
 
 	jsonBody, err := json.Marshal(hfReq)
 	if err != nil {
-		http.Error(w, "Failed to marshal request", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("HF Request: %s", string(jsonBody))
-
-	httpReq, err := http.NewRequest("POST", HF_API_URL, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		http.Error(w, "marshal error", http.StatusInternalServerError)
 		return
 	}
 
+	httpReq, _ := http.NewRequest("POST", HF_API_URL, bytes.NewBuffer(jsonBody))
 	httpReq.Header.Set("Authorization", "Bearer "+HF_API_TOKEN)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 30 * time.Second}
+
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		http.Error(w, "Failed to call Hugging Face API", http.StatusInternalServerError)
+		http.Error(w, "HF request failed", http.StatusInternalServerError)
 		return
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Failed to read response body", http.StatusInternalServerError)
-		return
-	}
+	body, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
-		http.Error(w, "Hugging Face API error: "+string(body), resp.StatusCode)
+		log.Println("HF ERROR:", string(body))
+		http.Error(w, "HF API error", resp.StatusCode)
 		return
 	}
 
 	var hfResp HFChatCompletionResponse
 	if err := json.Unmarshal(body, &hfResp); err != nil {
-		http.Error(w, "Failed to parse Hugging Face response", http.StatusInternalServerError)
+		http.Error(w, "parse error", http.StatusInternalServerError)
 		return
 	}
 
-	reply := "Sorry, no response from model."
+	reply := "no response"
 	if len(hfResp.Choices) > 0 {
 		reply = hfResp.Choices[0].Message.Content
 	}
 
-	res := ChatResponse{
-		Reply: reply,
-	}
+	history = conversationStore[req.SessionID]
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(res)
+	history = append(history, HFChatMessage{
+		Role:    "assistant",
+		Content: reply,
+	})
+
+	conversationStore[req.SessionID] = history
+
+	storeMutex.Unlock()
+
+	json.NewEncoder(w).Encode(ChatResponse{Reply: reply})
 }
 
 func main() {
+
+	if HF_API_TOKEN == "" {
+		log.Fatal("API_KEY is not set")
+	}
+
 	http.HandleFunc("/api/chat", chatHandler)
+
 	log.Println("Server started on :8081")
+
 	log.Fatal(http.ListenAndServe(":8081", nil))
 }
