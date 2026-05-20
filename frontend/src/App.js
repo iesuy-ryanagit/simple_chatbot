@@ -1,223 +1,366 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-// コードブロック用コンポーネント
+
 function CodeBlock({ children }) {
   const [copied, setCopied] = useState(false);
-  const code = String(children);
+  const code = String(children).replace(/\n$/, "");
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
-    } catch (e) {
-      setCopied(false);
-    }
+    } catch {}
   };
 
   return (
-    <div style={{ position: 'relative', margin: '8px 0' }}>
-      <pre style={{
-        background: '#222',
-        color: '#fff',
-        borderRadius: 8,
-        padding: '16px',
-        fontSize: 15,
-        overflowX: 'auto',
-        margin: 0
-      }}>
+    <div style={{ margin: "12px 0", position: "relative" }}>
+      <pre
+        style={{
+          background: "#1e1e1e",
+          color: "#fff",
+          borderRadius: 10,
+          padding: 14,
+          overflowX: "auto",
+          fontSize: 14,
+          margin: 0,
+        }}
+      >
         <code>{code}</code>
       </pre>
+
       <button
         onClick={handleCopy}
         style={{
-          position: 'absolute',
+          position: "absolute",
           top: 8,
-          right: 12,
-          padding: '4px 10px',
-          fontSize: 13,
+          right: 8,
+          fontSize: 12,
+          border: "none",
           borderRadius: 6,
-          border: 'none',
-          background: copied ? '#4caf50' : '#0078fe',
-          color: '#fff',
-          cursor: 'pointer',
-          transition: 'background 0.2s',
+          padding: "4px 8px",
+          background: copied ? "#10a37f" : "#444",
+          color: "#fff",
         }}
       >
-        {copied ? 'コピーしました' : 'コピー'}
+        {copied ? "コピー済み" : "コピー"}
       </button>
     </div>
   );
 }
 
 function getSessionId() {
-  let sessionId = localStorage.getItem("session_id");
-
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    localStorage.setItem("session_id", sessionId);
+  let id = localStorage.getItem("session_id");
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem("session_id", id);
   }
-
-  return sessionId;
+  return id;
 }
 
 const API_URL = process.env.REACT_APP_API_URL;
 
-function App() {
+export default function App() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const sendMessage = async () => {
+  const textareaRef = useRef(null);
+  const endRef = useRef(null);
 
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    const currentInput = input;
-
+    const text = input;
     setInput("");
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    setMessages((p) => [...p, { sender: "user", text }]);
     setLoading(true);
 
-    const userMessage = {
-      sender: "user",
-      text: currentInput
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-
     try {
-
-      const sessionId = getSessionId();
-
       const res = await fetch(`${API_URL}/api/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          session_id: sessionId,
-          message: currentInput,
+          session_id: getSessionId(),
+          message: text,
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("API Error");
-      }
-
       const data = await res.json();
 
-      const botMessage = {
-        sender: "bot",
-        text: data.reply
-      };
-
-      setMessages(prev => [...prev, botMessage]);
-
-    } catch (e) {
-
-      setMessages(prev => [
-        ...prev,
-        {
-          sender: "bot",
-          text: "エラーが発生しました"
-        }
+      setMessages((p) => [
+        ...p,
+        { sender: "bot", text: data.reply },
       ]);
-
+    } catch {
+      setMessages((p) => [
+        ...p,
+        { sender: "bot", text: "エラーが発生しました" },
+      ]);
     } finally {
-
       setLoading(false);
-
     }
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: "40px auto", fontFamily: 'Segoe UI, sans-serif' }}>
-      <h2 style={{ textAlign: 'center', marginBottom: 20 }}>Simple Chat</h2>
+    <div
+      style={{
+        height: "100vh",
+        background:  "#ffffff",
+        color: "#111",
+        display: "flex",
+        flexDirection: "column",
+        fontFamily:
+          "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont",
+      }}
+    >
+      {/* CHAT AREA */}
       <div
         style={{
-          border: "1px solid #e5e5e5",
-          borderRadius: 12,
-          background: '#f7f7f8',
-          padding: 16,
-          minHeight: 400,
-          marginBottom: 16,
+          flex: 1,
           overflowY: "auto",
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+          padding: "24px 0",
         }}
       >
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            style={{
-              display: 'flex',
-              justifyContent: msg.sender === "user" ? "flex-end" : "flex-start",
-              marginBottom: 10,
-            }}
-          >
+        {messages.map((m, i) => (
+          <div key={i} style={{ padding: "18px 16px" }}>
             <div
               style={{
-                maxWidth: '70%',
-                padding: '10px 16px',
-                borderRadius: 18,
-                background: msg.sender === "user" ? "#0078fe" : "#e5e5ea",
-                color: msg.sender === "user" ? "#fff" : "#222",
-                boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
-                wordBreak: 'break-word',
-                fontSize: 16,
+                maxWidth: 800,
+                margin: "0 auto",
+                display: "flex",
+                justifyContent:
+                  m.sender === "user"
+                    ? "flex-end"
+                    : "center",
               }}
             >
-              {msg.sender === "bot"
-                ? <ReactMarkdown
+              {/* USER (minimal box) */}
+              {m.sender === "user" ? (
+                <div
+                  style={{
+                    maxWidth: "70%",
+                    padding: "8px 12px",
+                    background: "#f2f2f2",
+                    fontSize: 15,
+                    wordBreak: "break-word",
+                    borderRadius: 12,
+                  }}
+                >
+                  {m.text}
+                </div>
+              ) : (
+                /* BOT (center plain text style) */
+                <div
+                  style={{
+                    maxWidth: 700,
+                    width: "100%",
+                    textAlign: "left",
+                    fontSize: 16,
+                    lineHeight: 1.7,
+                    whiteSpace: "pre-wrap",
+                  }}
+                >
+                  <ReactMarkdown
                     components={{
-                      code: ({node, inline, className, children, ...props}) => {
+                      code({ inline, children }) {
                         if (inline) {
-                          return <code style={{ background: '#eee', borderRadius: 4, padding: '2px 4px' }}>{children}</code>;
+                          return (
+                            <code
+                              style={{
+                                background: "#222",
+                                padding: "2px 6px",
+                                borderRadius: 6,
+                                fontSize: 14,
+                              }}
+                            >
+                              {children}
+                            </code>
+                          );
                         }
-                        return <CodeBlock>{children}</CodeBlock>;
-                      }
+                        return (
+                          <CodeBlock>{children}</CodeBlock>
+                        );
+                      },
                     }}
-                  >{msg.text}</ReactMarkdown>
-                : msg.text}
+                  >
+                    {m.text}
+                  </ReactMarkdown>
+                </div>
+              )}
             </div>
           </div>
         ))}
+
+        {loading && (
+          <div
+            style={{
+              textAlign: "center",
+              color: "#aaa",
+              padding: 20,
+            }}
+          >
+            ...
+          </div>
+        )}
+
+        <div ref={endRef} />
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+
+
+
+      {messages.length === 0 && (
+  <div
+    style={{
+      height: "100%",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "column",
+      color: "#666",
+      textAlign: "center",
+      padding: 24,
+    }}
+  >
+    <h1
+      style={{
+        fontSize: 32,
+        marginBottom: 12,
+        color: "#111",
+      }}
+    >
+      Simple Chatbot
+    </h1>
+
+    <p
+      style={{
+        fontSize: 16,
+        maxWidth: 500,
+        lineHeight: 1.6,
+      }}
+    >
+      質問してみましょう
+      <br />
+      コード生成・文章作成・相談などできます
+    </p>
+
+    <div
+      style={{
+        marginTop: 32,
+        display: "flex",
+        gap: 12,
+        flexWrap: "wrap",
+        justifyContent: "center",
+      }}
+    >
+      {[
+        "ReactでTODOアプリを作って",
+        "Pythonでスクレイピングしたい",
+        "かっこいいロゴ案を出して",
+      ].map((example) => (
+        <button
+          key={example}
+          onClick={() => setInput(example)}
           style={{
-            flex: 1,
-            padding: '12px 16px',
-            borderRadius: 18,
-            border: '1px solid #e5e5e5',
-            fontSize: 16,
-            outline: 'none',
-            background: '#fff',
+            border: "1px solid #e5e5e5",
+            background: "#fff",
+            padding: "10px 14px",
+            borderRadius: 12,
+            cursor: "pointer",
+            fontSize: 14,
           }}
-          placeholder="メッセージを入力..."
-          disabled={loading}
-        />
+        >
+          {example}
+        </button>
+      ))}
+    </div>
+  </div>
+)}
+
+      {/* INPUT (no border line, no separator) */}
+      <div style={{ padding: 16 }}>
+        <div
+          style={{
+            maxWidth: 800,
+            margin: "0 auto",
+            position: "relative",
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={input}
+            placeholder="質問してみましょう"
+            onChange={(e) => {
+              setInput(e.target.value);
+
+              e.target.style.height = "auto";
+
+              const maxHeight = 180;
+
+              if (e.target.scrollHeight > maxHeight) {
+                e.target.style.height = maxHeight + "px";
+                e.target.style.overflowY = "auto";
+              } else {
+                e.target.style.height = e.target.scrollHeight + "px";
+                e.target.style.overflowY = "hidden";
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            style={{
+              width: "100%",
+              background:  "#ffffff",
+              color: "#111",
+              border: "1px solid #e5e5e5",
+              borderRadius: 12,
+              padding: "12px 48px 12px 12px",
+              resize: "none",
+              outline: "none",
+              fontSize: 15,
+              minHeight: 48,
+              maxHeight: 180,
+              overflowY: "hidden",
+            }}
+          />
+
         <button
           onClick={sendMessage}
-          style={{
-            padding: '0 24px',
-            borderRadius: 18,
-            border: 'none',
-            background: loading ? '#b3d3fa' : '#0078fe',
-            color: '#fff',
-            fontWeight: 600,
-            fontSize: 16,
-            cursor: loading ? 'not-allowed' : 'pointer',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.07)'
-          }}
           disabled={loading}
+          style={{
+            position: "absolute",
+            right: 10,
+            bottom: 10,
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            border: "none",
+            background: "#000",
+            color: "#fff",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 16,
+            lineHeight: 1,
+          }}
         >
-          {loading ? '送信中...' : '送信'}
+          ↑
         </button>
+        </div>
       </div>
     </div>
   );
 }
-
-export default App;

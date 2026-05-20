@@ -54,6 +54,119 @@ var (
 	storeMutex        sync.Mutex
 )
 
+
+//Discord ログ収集
+var DISCORD_WEBHOOK = os.Getenv("DISCORD_WEBHOOK")
+
+
+type DiscordEmbed struct {
+	Title       string                 `json:"title,omitempty"`
+	Description string                 `json:"description,omitempty"`
+	Color       int                    `json:"color,omitempty"`
+	Fields      []DiscordEmbedField    `json:"fields,omitempty"`
+	Footer      *DiscordEmbedFooter    `json:"footer,omitempty"`
+	Timestamp   string                 `json:"timestamp,omitempty"`
+}
+
+type DiscordEmbedField struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`
+	Inline bool   `json:"inline"`
+}
+
+type DiscordEmbedFooter struct {
+	Text string `json:"text"`
+}
+
+type DiscordWebhook struct {
+	Content string         `json:"content,omitempty"`
+	Embeds  []DiscordEmbed `json:"embeds,omitempty"`
+}
+
+func SendDiscord(sessionID string, userMessage string, aiReply string) {
+
+	if DISCORD_WEBHOOK == "" {
+		return
+	}
+
+	// Discord制限対策
+	if len(userMessage) > 1000 {
+		userMessage = userMessage[:1000] + "..."
+	}
+
+	if len(aiReply) > 1000 {
+		aiReply = aiReply[:1000] + "..."
+	}
+
+	embed := DiscordEmbed{
+		Title: "🧠 New AI Chat",
+		Color: 0x5865F2,
+
+		Fields: []DiscordEmbedField{
+			{
+				Name:   "🆔 Session",
+				Value:  "```" + sessionID + "```",
+				Inline: false,
+			},
+			{
+				Name:   "👤 User",
+				Value:  "```" + userMessage + "```",
+				Inline: false,
+			},
+			{
+				Name:   "🤖 AI",
+				Value:  "```" + aiReply + "```",
+				Inline: false,
+			},
+		},
+
+		Footer: &DiscordEmbedFooter{
+			Text: "Go AI Backend",
+		},
+
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	payload := DiscordWebhook{
+		Embeds: []DiscordEmbed{embed},
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Println("Discord marshal error:", err)
+		return
+	}
+
+	req, err := http.NewRequest(
+		"POST",
+		DISCORD_WEBHOOK,
+		bytes.NewBuffer(jsonData),
+	)
+
+	if err != nil {
+		log.Println("Discord request error:", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Println("Discord send error:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		log.Println("Discord webhook error:", string(body))
+	}
+}
+
 func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", ALLOW_ORIGIN)
@@ -94,12 +207,14 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		Content: req.Message,
 	})
 
+
 	// 長さ制限（軽くする）
 	if len(history) > 10 {
 		history = history[len(history)-10:]
 	}
 
 	conversationStore[req.SessionID] = history
+	storeMutex.Unlock()
 
 	// =========================
 	// HF API
@@ -147,6 +262,7 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 		reply = hfResp.Choices[0].Message.Content
 	}
 
+	storeMutex.Lock()
 	history = conversationStore[req.SessionID]
 
 	history = append(history, HFChatMessage{
@@ -156,9 +272,13 @@ func chatHandler(w http.ResponseWriter, r *http.Request) {
 
 	conversationStore[req.SessionID] = history
 
+	go SendDiscord(req.SessionID, req.Message, reply)
+
 	storeMutex.Unlock()
 
-	json.NewEncoder(w).Encode(ChatResponse{Reply: reply})
+	if err := json.NewEncoder(w).Encode(ChatResponse{Reply: reply}); err != nil {
+	log.Println(err)
+	}
 }
 
 func main() {
